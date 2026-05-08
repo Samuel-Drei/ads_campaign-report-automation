@@ -1,0 +1,12 @@
+const config = $input.first().json;
+return config.contas.map(conta => ({
+  json: {
+    account_id: conta.id,
+    account_nome: conta.nome,
+    access_token: config.access_token,
+    limite_alerta_reais: config.limite_alerta_reais,
+    numero_whatsapp: config.numero_whatsapp,
+    evolution_url: config.evolution_url,
+    evolution_api_key: config.evolution_api_key
+  }
+}));
