@@ -1,0 +1,23 @@
+const item = $input.first().json;
+const balance = parseInt(item.balance || 0) / 100;
+const spendCap = parseInt(item.spend_cap || 0) / 100;
+const amountSpent = parseInt(item.amount_spent || 0) / 100;
+const saldoReal = spendCap > 0 ? (spendCap - amountSpent) : balance;
+const limite = $('Expandir Contas').item.json.limite_alerta_reais;
+const disparar = saldoReal <= limite && saldoReal >= 0;
+const saldoFormatado = 'R$ ' + saldoReal.toFixed(2).replace('.', ',');
+return [{
+  json: {
+    ...item,
+    saldo_real: saldoReal,
+    saldo_formatado: saldoFormatado,
+    amount_spent_real: amountSpent,
+    spend_cap_real: spendCap,
+    limite_configurado: limite,
+    disparar_alerta: disparar,
+    numero_whatsapp: $('Expandir Contas').item.json.numero_whatsapp,
+    evolution_url: $('Expandir Contas').item.json.evolution_url,
+    evolution_api_key: $('Expandir Contas').item.json.evolution_api_key,
+    verificado_em: new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })
+  }
+}];
