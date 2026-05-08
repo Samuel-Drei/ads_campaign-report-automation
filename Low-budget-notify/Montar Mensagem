@@ -1,0 +1,10 @@
+const item = $input.first().json;
+const mensagem = `⚠️ *ALERTA DE SALDO META ADS*\n\n📊 *Conta:* ${item.name}\n💰 *Saldo atual:* ${item.saldo_formatado}\n⚠️ *Limite de alerta:* R$ ${item.limite_configurado.toFixed(2).replace('.', ',')}\n\n🚨 Saldo abaixo do limite configurado!\n\n🕐 Verificado em: ${item.verificado_em}\n\n_Recarregue a conta para evitar pausas nas campanhas._`;
+return [{
+  json: {
+    number: item.numero_whatsapp,
+    text: mensagem,
+    evolution_url: item.evolution_url,
+    evolution_api_key: item.evolution_api_key
+  }
+}];
