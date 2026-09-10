@@ -1,0 +1,798 @@
+{
+  "name": "AUTOMAÇOES RELATORIOS - Cliente",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2480,
+        64
+      ],
+      "id": "8783fd71-5318-4d85-a7b2-96ca85c74a61",
+      "name": "Timer"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "tokenAccount",
+              "value": "SEU_ACCESS_TOKEN_AQUI",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "AdAccount",
+              "value": "act_XXXXXXXXXXXXXXX",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "periodo",
+              "value": "last_7d",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2704,
+        64
+      ],
+      "id": "606cdb92-e31b-4433-b92c-e783699cb3fe",
+      "name": "Informações"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v22.0/{{ $json.AdAccount }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "campaign_id,campaign_name,ad_id,ad_name,impressions,reach,clicks,spend,actions,date_start,date_stop"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $json.tokenAccount }}"
+            },
+            {
+              "name": "date_preset",
+              "value": "={{ $json.periodo }}"
+            },
+            {
+              "name": "level",
+              "value": "ad"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5a2e9152-cd73-4d6d-8127-72debd33db83",
+      "name": "Insights por Anúncio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2928,
+        -48
+      ],
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v22.0/{{ $('Informações').item.json.AdAccount }}/ads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,status,effective_status,campaign{name}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Informações').item.json.tokenAccount }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d2678af6-31bb-4f25-84e3-e685513a5cdd",
+      "name": "Status dos Anúncios",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2928,
+        160
+      ],
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3152,
+        64
+      ],
+      "id": "edb31096-16bf-4fda-a6dc-f4c610ca52fb",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst MAPA_GOAL = {\n  \"CONVERSATIONS\":           \"onsite_conversion.messaging_conversation_started_7d\",\n  \"MESSAGES\":                \"onsite_conversion.messaging_conversation_started_7d\",\n  \"LINK_CLICKS\":             \"link_click\",\n  \"LANDING_PAGE_VIEWS\":      \"landing_page_view\",\n  \"LEAD_GENERATION\":         \"lead\",\n  \"QUALITY_LEAD\":            \"lead\",\n  \"POST_ENGAGEMENT\":         \"post_engagement\",\n  \"VIDEO_VIEWS\":             \"video_view\",\n  \"PAGE_LIKES\":              \"like\",\n  \"OFFSITE_CONVERSIONS\":     \"purchase\",\n  \"VALUE\":                   \"purchase\",\n  \"VISIT_INSTAGRAM_PROFILE\": \"profile_visit\",\n  \"PROFILE_VISIT\":           \"profile_visit\",\n  \"REACH\":                   \"__reach__\",\n  \"BRAND_AWARENESS\":         \"__reach__\",\n  \"IMPRESSIONS\":             \"__impressions__\",\n};\n\nconst LABEL_MAP = {\n  \"onsite_conversion.messaging_conversation_started_7d\": [\"Conversas Iniciadas\", \"MESSAGES\"],\n  \"link_click\":        [\"Cliques no Link\",    \"TRAFFIC\"],\n  \"landing_page_view\": [\"Visitas na Página\",  \"TRAFFIC\"],\n  \"lead\":              [\"Leads\",              \"LEADS\"],\n  \"post_engagement\":   [\"Engajamento\",        \"ENGAGEMENT\"],\n  \"video_view\":        [\"Views de Vídeo\",     \"VIDEO\"],\n  \"like\":              [\"Curtidas na Página\", \"ENGAGEMENT\"],\n  \"purchase\":          [\"Compras\",            \"SALES\"],\n  \"profile_visit\":     [\"Visitas ao Perfil\",  \"FOLLOWERS\"],\n};\n\nconst getMetrica = (goal, impressions, reach, inlineClicks, actions) => {\n  const ga   = (t) => { const a = actions.find(a => a.action_type === t); return a ? parseFloat(a.value) : 0; };\n  const tipo = MAPA_GOAL[goal];\n  if (!tipo) {\n    const leads = ga(\"onsite_conversion.messaging_conversation_started_7d\");\n    const tc    = ga(\"onsite_conversion.total_messaging_connection\");\n    const pur   = ga(\"purchase\"),  pv  = ga(\"profile_visit\");\n    const lc    = ga(\"link_click\"), eng = ga(\"post_engagement\"), alc = parseInt(reach || 0);\n    if (leads > 0 || tc > 0) return { label: \"Conversas Iniciadas\", valor: parseInt(leads || tc), bloco: \"MESSAGES\"   };\n    if (pur > 0)             return { label: \"Compras\",             valor: parseInt(pur),          bloco: \"SALES\"      };\n    if (pv > 0)              return { label: \"Visitas ao Perfil\",   valor: parseInt(pv),           bloco: \"FOLLOWERS\"  };\n    if (lc > 0)              return { label: \"Cliques no Link\",     valor: parseInt(lc),           bloco: \"TRAFFIC\"    };\n    if (alc > 0 && eng > 0 && (eng / alc) < 0.05)\n                             return { label: \"Alcance\",             valor: alc,                    bloco: \"AWARENESS\"  };\n    if (eng > 0)             return { label: \"Engajamento\",         valor: parseInt(eng),          bloco: \"ENGAGEMENT\" };\n    return { label: \"Impressões\", valor: parseInt(impressions || 0), bloco: \"GENERIC\" };\n  }\n  if (tipo === \"__reach__\")       return { label: \"Alcance\",          valor: parseInt(reach || 0),       bloco: \"AWARENESS\" };\n  if (tipo === \"__impressions__\") return { label: \"Impressões\",       valor: parseInt(impressions || 0), bloco: \"GENERIC\"   };\n  if (tipo === \"profile_visit\") {\n    const pvVal = ga(\"profile_visit\");\n    const val   = pvVal > 0 ? parseInt(pvVal) : parseInt(inlineClicks || 0);\n    return { label: \"Visitas ao Perfil\", valor: val, bloco: \"FOLLOWERS\" };\n  }\n  const a = actions.find(a => a.action_type === tipo);\n  const valor = a ? parseInt(parseFloat(a.value)) : 0;\n  const [label, bloco] = LABEL_MAP[tipo] || [\"Resultado\", \"GENERIC\"];\n  return { label, valor, bloco };\n};\n\nconst getAdValor = (goal, ad) => {\n  const actions = ad._actions || [];\n  const ga      = (t) => { const a = actions.find(a => a.action_type === t); return a ? parseFloat(a.value) : 0; };\n  const tipo    = MAPA_GOAL[goal];\n  if (!tipo)              return ga(\"onsite_conversion.messaging_conversation_started_7d\") || ga(\"post_engagement\");\n  if (tipo === \"__reach__\")       return ad._reach || 0;\n  if (tipo === \"__impressions__\") return ad._impressoes || 0;\n  if (tipo === \"profile_visit\") { const pv = ga(\"profile_visit\"); return pv > 0 ? parseInt(pv) : (ad._ilc || 0); }\n  const a = actions.find(a => a.action_type === tipo);\n  return a ? parseInt(parseFloat(a.value)) : 0;\n};\n\nconst getAdLabel = (goal) => {\n  const tipo = MAPA_GOAL[goal];\n  if (!tipo)                      return \"resultados\";\n  if (tipo === \"__reach__\")       return \"alcance\";\n  if (tipo === \"__impressions__\") return \"impressões\";\n  if (tipo === \"profile_visit\")   return \"visitas ao perfil\";\n  const entry = LABEL_MAP[tipo];\n  return entry ? entry[0].toLowerCase() : \"resultados\";\n};\n\nconst formatarData = (d) => {\n  if (!d || d === \"N/A\") return \"N/A\";\n  try { const p = d.split(\"-\"); return `${p[2]}/${p[1]}/${p[0]}`; } catch { return d; }\n};\n\nconst buildMensagem = (c, ctr, cpc, cpm, cpr, freq, m) => {\n  const di    = formatarData(c.data_inicio);\n  const df    = formatarData(c.data_fim);\n  const bloco = m.bloco;\n\n  let msg = `📣 *${c.campaign_name}*\\n`;\n  msg += `📅 ${di} → ${df}\\n`;\n  msg += `━━━━━━━━━━━━━━━━━\\n`;\n  msg += `🎯 *Resultado:* ${m.valor} ${m.label}\\n`;\n  msg += `💸 *Investimento:* R$ ${c.spend.toFixed(2)}\\n`;\n  if (cpr !== \"R$ 0\" && bloco !== \"AWARENESS\") msg += `💰 Custo por resultado: ${cpr}\\n`;\n\n  if (bloco === \"MESSAGES\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `💬 Conversas: ${parseInt(c.leads)}\\n`;\n    msg += `🔗 Total conexões: ${parseInt(c.total_conexoes)}\\n`;\n  } else if (bloco === \"FOLLOWERS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👤 Visitas ao perfil: ${m.valor}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n  } else if (bloco === \"AWARENESS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `🔁 Frequência: ${freq}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n    msg += `💰 CPM: ${cpm}\\n`;\n  } else if (bloco === \"ENGAGEMENT\" || bloco === \"VIDEO\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `📌 Engajamento: ${parseInt(c.eng_post)}\\n`;\n    msg += `🎥 Views de vídeo: ${parseInt(c.video_views)}\\n`;\n    msg += `👍 Reações: ${parseInt(c.reacoes)}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n  } else if (bloco === \"TRAFFIC\" || bloco === \"LEADS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👆 Cliques: ${parseInt(c.cliques_link)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `🖱️ CPC: ${cpc}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n  } else if (bloco === \"SALES\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `🛒 Compras: ${m.valor}\\n`;\n    msg += `👆 Cliques: ${parseInt(c.cliques_link)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `🖱️ CPC: ${cpc}\\n`;\n  } else {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `💰 CPM: ${cpm}\\n`;\n  }\n\n  const goal    = c.optimization_goal;\n  const adLabel = getAdLabel(goal);\n  const ativos  = Object.values(c.anuncios)\n    .filter(a => !a.paused)\n    .sort((a, b) => b.valor_principal - a.valor_principal);\n  const pausados = Object.values(c.anuncios).filter(a => a.paused);\n\n  if (ativos.length) {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `✅ *Anúncios ativos:*\\n`;\n    for (const a of ativos) {\n      const nome = a.name.length > 35 ? a.name.substring(0, 35) + \"…\" : a.name;\n      msg += `• ${nome} → ${parseInt(a.valor_principal)} ${adLabel}\\n`;\n    }\n  }\n  if (pausados.length) {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `⚠️ *Pausados:*\\n`;\n    for (const a of pausados) {\n      const nome = a.name.length > 35 ? a.name.substring(0, 35) + \"…\" : a.name;\n      msg += `• ${nome}\\n`;\n    }\n  }\n  return msg;\n};\n\n// ── Inputs: [0] Insights (nível ad), [1] Status dos ads\nconst insightsRaw = items[0]?.json?.data || [];\nconst statusRaw   = items[1]?.json?.data || [];\n\nconst statusMap = {};\nfor (const ad of statusRaw) {\n  statusMap[ad.id] = {\n    name:          ad.name,\n    status:        ad.effective_status || ad.status || \"UNKNOWN\",\n    campaign_name: ad.campaign ? ad.campaign.name : (ad.campaign_name || \"N/A\"),\n  };\n}\n\nconst campanhas = {};\n\nfor (const d of insightsRaw) {\n  const cid = d.campaign_id;\n  const aid = d.ad_id;\n  if (!cid) continue;\n\n  if (!campanhas[cid]) {\n    campanhas[cid] = {\n      campaign_name:     d.campaign_name     || \"N/A\",\n      account_name:      d.account_name      || \"N/A\",\n      data_inicio:       d.date_start        || \"N/A\",\n      data_fim:          d.date_stop         || \"N/A\",\n      optimization_goal: d.optimization_goal || null,\n      impressoes: 0, alcance: 0, cliques: 0, cliques_link: 0, spend: 0,\n      video_views: 0, reacoes: 0, eng_post: 0, eng_pagina: 0,\n      leads: 0, total_conexoes: 0, profile_visit: 0, purchases: 0,\n      _acc: {}, anuncios: {},\n    };\n  }\n\n  const c = campanhas[cid];\n  const actions = d.actions || [];\n  actions.forEach(a => { c._acc[a.action_type] = (c._acc[a.action_type] || 0) + parseFloat(a.value); });\n\n  const ga = (t) => { const a = actions.find(a => a.action_type === t); return a ? parseFloat(a.value) : 0; };\n  c.impressoes     += parseInt(d.impressions        || \"0\", 10);\n  c.alcance        += parseInt(d.reach              || \"0\", 10);\n  c.cliques        += parseInt(d.clicks             || \"0\", 10);\n  c.cliques_link   += parseInt(d.inline_link_clicks || \"0\", 10);\n  c.spend          += parseFloat(d.spend            || \"0\");\n  c.video_views    += ga(\"video_view\");\n  c.reacoes        += ga(\"post_reaction\");\n  c.eng_post       += ga(\"post_engagement\");\n  c.eng_pagina     += ga(\"page_engagement\");\n  c.leads          += ga(\"onsite_conversion.messaging_conversation_started_7d\");\n  c.total_conexoes += ga(\"onsite_conversion.total_messaging_connection\");\n  c.profile_visit  += ga(\"profile_visit\");\n  c.purchases      += ga(\"purchase\");\n  if (d.optimization_goal && !c.optimization_goal) c.optimization_goal = d.optimization_goal;\n\n  if (aid) {\n    if (!c.anuncios[aid]) {\n      c.anuncios[aid] = {\n        name: d.ad_name || statusMap[aid]?.name || \"N/A\",\n        valor_principal: 0, spend: 0,\n        _actions: [], _ilc: 0, _reach: 0, _impressoes: 0,\n        alcance: 0, impressoes: 0, cliques_link: 0, paused: false,\n      };\n    }\n    const ad = c.anuncios[aid];\n    ad.spend       += parseFloat(d.spend || \"0\");\n    ad._ilc        += parseInt(d.inline_link_clicks || \"0\", 10);\n    ad._reach      += parseInt(d.reach || \"0\", 10);\n    ad._impressoes += parseInt(d.impressions || \"0\", 10);\n    ad.alcance      = ad._reach;\n    ad.impressoes   = ad._impressoes;\n    ad.cliques_link = ad._ilc;\n    for (const a of actions) {\n      const ex = ad._actions.find(x => x.action_type === a.action_type);\n      if (ex) ex.value = String(parseFloat(ex.value) + parseFloat(a.value));\n      else    ad._actions.push({ action_type: a.action_type, value: a.value });\n    }\n  }\n}\n\n// Recalcula valor_principal após acumular todos os adsets\nfor (const cid of Object.keys(campanhas)) {\n  const c = campanhas[cid];\n  for (const ad of Object.values(c.anuncios)) {\n    ad.valor_principal = getAdValor(c.optimization_goal, ad);\n  }\n}\n\n// Adiciona pausados sem gasto (vêm apenas do status)\nfor (const [aid, adInfo] of Object.entries(statusMap)) {\n  if ([\"PAUSED\",\"CAMPAIGN_PAUSED\",\"ADSET_PAUSED\"].includes(adInfo.status)) {\n    for (const cid of Object.keys(campanhas)) {\n      if (campanhas[cid].campaign_name === adInfo.campaign_name && !campanhas[cid].anuncios[aid]) {\n        campanhas[cid].anuncios[aid] = {\n          name: adInfo.name, valor_principal: 0, spend: 0,\n          _actions: [], _ilc: 0, _reach: 0, _impressoes: 0,\n          alcance: 0, impressoes: 0, cliques_link: 0, paused: true,\n        };\n      }\n    }\n  }\n}\n\nconst resultado = [];\nfor (const cid of Object.keys(campanhas)) {\n  const c = campanhas[cid];\n  const actList = Object.entries(c._acc).map(([k, v]) => ({ action_type: k, value: String(v) }));\n\n  const ctr  = c.impressoes > 0 ? ((c.cliques / c.impressoes) * 100).toFixed(2) + \"%\" : \"0%\";\n  const cpc  = c.cliques    > 0 ? \"R$ \" + (c.spend / c.cliques).toFixed(2)            : \"R$ 0\";\n  const freq = c.alcance    > 0 ? (c.impressoes / c.alcance).toFixed(2)               : \"0\";\n  const cpm  = c.impressoes > 0 ? \"R$ \" + ((c.spend / c.impressoes) * 1000).toFixed(2): \"R$ 0\";\n\n  const m   = getMetrica(c.optimization_goal, c.impressoes, c.alcance, c.cliques_link, actList);\n  const cpr = m.valor > 0 ? \"R$ \" + (c.spend / m.valor).toFixed(2) : \"R$ 0\";\n\n  resultado.push({ json: {\n    mensagem:        buildMensagem(c, ctr, cpc, cpm, cpr, freq, m),\n    campaign_name:   c.campaign_name,\n    resultado_label: m.label,\n    resultado_valor: m.valor.toString(),\n    investimento:    \"R$ \" + c.spend.toFixed(2),\n    cpr,\n  }});\n}\nreturn resultado;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        64
+      ],
+      "id": "a3f3d545-bc8f-4035-92e4-973fc1cf3e07",
+      "name": "Formatar Métricas"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "IACRM",
+        "remoteJid": "SEU_GRUPO_OU_NUMERO_WHATSAPP",
+        "messageText": "={{ $json.mensagem }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        80
+      ],
+      "id": "1f24fcc0-a3af-4f0d-929e-d9f1c5632188",
+      "name": "Enviar WhatsApp",
+      "credentials": {
+        "evolutionApi": {
+          "id": "FuIjNHVb7BNII0Xf",
+          "name": "Evolution CRM Realiza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3584,
+        64
+      ],
+      "id": "edcb99c7-ab3f-4270-8494-d6c80e18fa96",
+      "name": "Loop Campanhas1"
+    },
+    {
+      "parameters": {
+        "content": "## Métricas Diárias - Cliente\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2464,
+        -144
+      ],
+      "typeVersion": 1,
+      "id": "9d1b35f6-d19b-4189-8f7b-626660b51c5e",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Métricas Semanais - Cliente\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2032,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "50f15be9-ad8b-4192-918c-9647cf1f2efb",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Métricas Mensais - Cliente\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1712,
+        720
+      ],
+      "typeVersion": 1,
+      "id": "fb068cfb-ebaa-4a9a-9e53-f89c6fbafa65",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ new Date }}",
+        "format": "yyyy-MM-dd",
+        "outputFieldName": "hoje",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        928
+      ],
+      "id": "cdb60ad7-5ab1-480c-a65b-2f0f53b2aae9",
+      "name": "Data1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const insight = $json.data[0];\n\n// Verifica se insight é um objeto e pega a array de métricas de ações\nconst metricasArray = Array.isArray(insight) ? insight : Object.values(insight).find(val => Array.isArray(val)) || [];\n\n// Calculando métricas derivadas\nconst impressoes = parseInt(insight.impressions || \"0\", 10);\nconst cliques = parseInt(insight.clicks || \"0\", 10);\nconst investimento = parseFloat(insight.spend || \"0\");\nconst alcance = parseInt(insight.reach || \"0\", 10);\nconst frequencia = impressoes && alcance ? (impressoes / alcance).toFixed(2) : \"0\";\nconst ctr = impressoes ? ((cliques / impressoes) * 100).toFixed(2) : \"0\"; // CTR em porcentagem\nconst cpc = cliques ? (investimento / cliques).toFixed(2) : \"0\"; // Custo por clique\n\n// Extraindo métricas específicas das ações\nconst metricas = metricasArray.reduce((acc, item) => {\n  switch (item.action_type) {\n    case \"onsite_conversion.messaging_user_depth_3_message_send\":\n      acc[\"Envio de Mensagem (Profundidade 3)\"] = item.value;\n      break;\n    case \"onsite_conversion.messaging_first_reply\":\n      acc[\"Primeira Resposta em Mensagem\"] = item.value;\n      break;\n    case \"onsite_conversion.messaging_user_depth_2_message_send\":\n      acc[\"Envio de Mensagem (Profundidade 2)\"] = item.value;\n      break;\n    case \"onsite_conversion.messaging_conversation_started_7d\":\n      acc[\"Conversa Iniciada (7 dias)\"] = item.value;\n      break;\n    case \"onsite_conversion.total_messaging_connection\":\n      acc[\"Total de Conexões de Mensagens\"] = item.value;\n      break;\n    case \"video_view\":\n      acc[\"Visualizações de Vídeo\"] = item.value;\n      break;\n    case \"post_reaction\":\n      acc[\"Reações ao Post\"] = item.value;\n      break;\n    case \"link_click\":\n      acc[\"Cliques no Link\"] = item.value;\n      break;\n    case \"onsite_conversion.post_save\":\n      acc[\"Posts Salvos\"] = item.value;\n      break;\n    case \"page_engagement\":\n      acc[\"Engajamento na Página\"] = item.value;\n      break;\n    case \"post_engagement\":\n      acc[\"Engajamento no Post\"] = item.value;\n      break;\n    default:\n      acc[\"Desconhecido\"] = item.value;\n  }\n  return acc;\n}, {});\n\n// Adicionando métricas específicas que podem vir de actions ou serem calculadas\nconst cliquesNoLink = metricas[\"Cliques no Link\"] || \"0\";\nconst leads = metricas[\"Conversa Iniciada (7 dias)\"] || \"0\"; // Assumindo como leads, ajustar se houver métrica específica\nconst totalConexoesMensagens = metricas[\"Total de Conexões de Mensagens\"] || \"0\";\nconst initiateCheckout = insight.actions?.find(a => a.action_type === \"initiate_checkout\")?.value || \"0\";\nconst purchases = insight.actions?.find(a => a.action_type === \"purchase\")?.value || \"0\";\nconst valorConversao = insight.conversion_values?.find(cv => cv.action_type === \"purchase\")?.value || \"0\";\nconst roas = investimento ? (parseFloat(valorConversao) / investimento).toFixed(2) : \"0\";\nconst custoPorLead = leads && parseInt(leads) ? (investimento / parseInt(leads)).toFixed(2) : \"0\";\nconst custoPorInitiateCheckout = initiateCheckout && parseInt(initiateCheckout) ? (investimento / parseInt(initiateCheckout)).toFixed(2) : \"0\";\nconst custoPorCompra = purchases && parseInt(purchases) ? (investimento / parseInt(purchases)).toFixed(2) : \"0\";\n\n// Montando o objeto organizado\nconst dadosOrganizados = {\n  \"data_inicio\": insight.date_start || \"N/A\",\n  \"data_fim\": insight.date_stop || \"N/A\",\n  \"nome_conta_anuncio\": insight.account_name || \"N/A\",\n  \"alcance\": alcance.toString(),\n  \"ctr\": ctr + \"%\",\n  \"cliques_no_link\": cliquesNoLink,\n  \"view_page_destino\": insight.landing_page_views || \"0\",\n  \"cpc\": cpc,\n  \"leads_cadastrados\": leads,\n  \"initiate_checkout\": initiateCheckout,\n  \"purchase\": purchases,\n  \"custo_por_finalizacao_compra\": custoPorCompra,\n  \"custo_por_lead\": custoPorLead,\n  \"custo_por_initiate_checkout\": custoPorInitiateCheckout,\n  \"qtd_compras\": purchases,\n  \"valor_conversao\": valorConversao,\n  \"roas\": roas,\n  \"gasto_investimento\": investimento.toFixed(2),\n  \"frequencia\": frequencia,\n  \"impressoes\": impressoes.toString(),\n  \"cliques\": cliques.toString(),\n  \"total_conexoes_mensagens\": totalConexoesMensagens, // Adicionado aqui como métrica principal\n  \"metricas_adicionais\": metricas // Mantém todas as métricas de ações como extra\n};\n\n$input.item.json.insightsFormatados = dadosOrganizados;\n\nreturn $input.item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        928
+      ],
+      "id": "b7e1570d-59bd-47fc-919a-aaeaee3762f4",
+      "name": "organizador de metricas1"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "IACRM",
+        "remoteJid": "SEU_GRUPO_OU_NUMERO_WHATSAPP",
+        "messageText": "=Resumo das Métricas das Campanhas de Anúncios do Mês (a partir de {{ $json.insightsFormatados.data_inicio }} até ontem)\n\nConta: {{ $json.insightsFormatados.nome_conta_anuncio }}  \n\n📊 Métricas:  \n\n🌍 Alcance: {{ $json.insightsFormatados.alcance }}\n👁️ Impressões: {{ $json.insightsFormatados.impressoes }} \n💬 Engajamento na Página: {{ $json.insightsFormatados.metricas_adicionais['Engajamento na Página'] }} \n🎥 Visualizações de Vídeo: {{ $json.insightsFormatados.metricas_adicionais['Visualizações de Vídeo'] }} \n👍 Reações ao Post: {{ $json.insightsFormatados.metricas_adicionais['Reações ao Post'] }} \n📌 Engajamento no Post: {{ $json.insightsFormatados.metricas_adicionais['Engajamento no Post'] }} \n\n\n\n👆 Cliques no Site: {{ $json.insightsFormatados.cliques_no_link }} \n💬 Lead no Whatsapp (7 dias): {{ $json.insightsFormatados.metricas_adicionais['Conversa Iniciada (7 dias)'] }}\n💬 Total de Conexões de Mensagens: {{ $json.insightsFormatados.total_conexoes_mensagens }} \n\n\n\n💸 Custo por Lead: R$ {{ $json.insightsFormatados.custo_por_lead }} \n💸 Gasto/Valor Usado: R$ {{ $json.insightsFormatados.gasto_investimento }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        928
+      ],
+      "id": "1e2398e2-7d73-4cc6-83da-e12db52e272c",
+      "name": "enviar metricas1",
+      "credentials": {
+        "evolutionApi": {
+          "id": "FuIjNHVb7BNII0Xf",
+          "name": "Evolution CRM Realiza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "daysInterval": 30,
+              "triggerAtHour": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1712,
+        928
+      ],
+      "id": "4e88f071-36d8-42ee-aab1-21bdbca297ef",
+      "name": "Timer2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1529bb48-eaf1-4792-8bf4-112ca4cce639",
+              "name": "tokenAccount",
+              "value": "SEU_ACCESS_TOKEN_AQUI",
+              "type": "string"
+            },
+            {
+              "id": "1fbca424-498c-4e1c-9c92-a3b1d0f55f49",
+              "name": "AdAccount",
+              "value": "act_XXXXXXXXXXXXXXX",
+              "type": "string"
+            },
+            {
+              "id": "33d71245-6144-464e-8baa-7725bb4e4b2a",
+              "name": "periodo",
+              "value": "last_30d",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        928
+      ],
+      "id": "08dd2233-1ebc-4a26-bbde-47ba3e881320",
+      "name": "Informações2"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v22.0/{{ $('Informações2').item.json.AdAccount }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "account_name,impressions,reach,clicks,spend,actions,ctr,cpc,cpm,frequency,date_start,date_stop"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Informações2').item.json.tokenAccount }}"
+            },
+            {
+              "name": "date_preset",
+              "value": "={{ $('Informações2').item.json.periodo }}"
+            },
+            {
+              "name": "level",
+              "value": "account"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "54f6e61e-06a4-4954-85a6-c2c1f020f237",
+      "name": "Métricas por Anúncio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2320,
+        928
+      ],
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3248,
+        512
+      ],
+      "id": "da7c5ab2-1816-445a-8e2c-d82057d73971",
+      "name": "Loop Campanhas2"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "IACRM",
+        "remoteJid": "SEU_GRUPO_OU_NUMERO_WHATSAPP",
+        "messageText": "={{ $json.mensagem }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        3552,
+        528
+      ],
+      "id": "eee73f29-3224-44ba-ae61-a7386df6f1a8",
+      "name": "Enviar Campanha WhatsApp1",
+      "credentials": {
+        "evolutionApi": {
+          "id": "FuIjNHVb7BNII0Xf",
+          "name": "Evolution CRM Realiza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v22.0/{{ $('Informações4').item.json.AdAccount }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "campaign_id,campaign_name,adset_id,cost_per_action_type,adset_name,optimization_goal, account_name,impressions,reach,clicks,inline_link_clicks,spend, actions,date_start,date_stop"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Informações4').item.json.tokenAccount }}"
+            },
+            {
+              "name": "date_preset",
+              "value": "={{ $('Informações4').item.json.periodo }}"
+            },
+            {
+              "name": "level",
+              "value": "adset"
+            },
+            {
+              "name": "action_type",
+              "value": "profile_visit"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "77f082a2-ecfc-4765-b388-b53c6a6d7299",
+      "name": "Métricas por Anúncio2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2720,
+        512
+      ],
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2080,
+        512
+      ],
+      "id": "22f81479-0af9-4059-8f6f-83c703f6d1c9",
+      "name": "Timer4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1529bb48-eaf1-4792-8bf4-112ca4cce639",
+              "name": "tokenAccount",
+              "value": "SEU_ACCESS_TOKEN_AQUI",
+              "type": "string"
+            },
+            {
+              "id": "1fbca424-498c-4e1c-9c92-a3b1d0f55f49",
+              "name": "AdAccount",
+              "value": "act_XXXXXXXXXXXXXXX",
+              "type": "string"
+            },
+            {
+              "id": "33d71245-6144-464e-8baa-7725bb4e4b2a",
+              "name": "periodo",
+              "value": "last_7d",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2272,
+        512
+      ],
+      "id": "4dc4d4ae-3dfe-4c08-9d93-586b010e8e46",
+      "name": "Informações4"
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ new Date }}",
+        "format": "yyyy-MM-dd",
+        "outputFieldName": "hoje",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        512
+      ],
+      "id": "41d1e94f-138a-4f84-b33e-4281c72ed348",
+      "name": "Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════════════\n// RELATÓRIO SEMANAL — Facebook Ads → WhatsApp\n// v2.0 — Arquitetura baseada em optimization_goal (fonte única de verdade)\n//\n// COMO ADICIONAR UM NOVO TIPO DE CAMPANHA:\n//   1. Adicionar linha em MAPA_GOAL:  \"NOVO_GOAL\": \"action_type_da_api\"\n//   2. Adicionar linha em LABEL_MAP:  \"action_type_da_api\": [\"Label\", \"BLOCO\"]\n//   3. Se necessário, adicionar bloco em buildMensagem() para o novo BLOCO\n//   4. Rodar o Node de Testes antes de publicar\n// ════════════════════════════════════════════════════════════════════════\n\nconst items = $input.all();\nconst campanhas = {};\n\n// ── Mapeia optimization_goal → action_type da API do Meta\n// Prefixos especiais __reach__ e __impressions__ são campos raiz (não são actions)\n// NOTA profile_visit: usa inline_link_clicks como proxy — funciona para campanhas\n// com destino \"Perfil do Instagram\". Revisitar se o formato do anúncio mudar.\nconst MAPA_GOAL = {\n  \"CONVERSATIONS\":           \"onsite_conversion.messaging_conversation_started_7d\",\n  \"MESSAGES\":                \"onsite_conversion.messaging_conversation_started_7d\",\n  \"LINK_CLICKS\":             \"link_click\",\n  \"LANDING_PAGE_VIEWS\":      \"landing_page_view\",\n  \"LEAD_GENERATION\":         \"lead\",\n  \"QUALITY_LEAD\":            \"lead\",\n  \"POST_ENGAGEMENT\":         \"post_engagement\",\n  \"VIDEO_VIEWS\":             \"video_view\",\n  \"PAGE_LIKES\":              \"like\",\n  \"OFFSITE_CONVERSIONS\":     \"purchase\",\n  \"VALUE\":                   \"purchase\",\n  \"VISIT_INSTAGRAM_PROFILE\": \"profile_visit\",\n  \"PROFILE_VISIT\":           \"profile_visit\",\n  \"REACH\":                   \"__reach__\",\n  \"BRAND_AWARENESS\":         \"__reach__\",\n  \"IMPRESSIONS\":             \"__impressions__\",\n};\n\n// ── Mapeia action_type → [label da mensagem, bloco de métricas]\n// bloco determina qual seção buildMensagem() vai renderizar\nconst LABEL_MAP = {\n  \"onsite_conversion.messaging_conversation_started_7d\": [\"Conversas Iniciadas\", \"MESSAGES\"],\n  \"link_click\":        [\"Cliques no Link\",    \"TRAFFIC\"],\n  \"landing_page_view\": [\"Visitas na Página\",  \"TRAFFIC\"],\n  \"lead\":              [\"Leads\",              \"LEADS\"],\n  \"post_engagement\":   [\"Engajamento\",        \"ENGAGEMENT\"],\n  \"video_view\":        [\"Views de Vídeo\",     \"VIDEO\"],\n  \"like\":              [\"Curtidas na Página\", \"ENGAGEMENT\"],\n  \"purchase\":          [\"Compras\",            \"SALES\"],\n  \"profile_visit\":     [\"Cliques no Perfil\",  \"FOLLOWERS\"],\n};\n\n// ── Determina resultado principal + bloco da mensagem\n// Retorna { label, valor, bloco } — mesma fonte usada por buildMensagem()\n// Garante que 🎯 Resultado e o bloco de métricas nunca divergem\nconst getMetrica = (goal, impressions, reach, inlineClicks, actions) => {\n  const ga = (t) => { const a = actions.find(a => a.action_type === t); return a ? parseFloat(a.value) : 0; };\n  const tipo = MAPA_GOAL[goal];\n\n  // Fallback: goal não veio da API ou ainda não está mapeado\n  // Ordem de prioridade: mensagens > compras > tráfego > engajamento > impressões\n  if (!tipo) {\n    const leads = ga(\"onsite_conversion.messaging_conversation_started_7d\");\n    const tc    = ga(\"onsite_conversion.total_messaging_connection\");\n    const pur   = ga(\"purchase\");\n    const lc    = ga(\"link_click\");\n    const eng   = ga(\"post_engagement\");\n    if (leads > 0 || tc > 0) return { label: \"Conversas Iniciadas\", valor: parseInt(leads || tc), bloco: \"MESSAGES\"   };\n    if (pur > 0)             return { label: \"Compras\",             valor: parseInt(pur),          bloco: \"SALES\"      };\n    if (lc > 0)              return { label: \"Cliques no Link\",     valor: parseInt(lc),           bloco: \"TRAFFIC\"    };\n    if (eng > 0)             return { label: \"Engajamento\",         valor: parseInt(eng),          bloco: \"ENGAGEMENT\" };\n    return { label: \"Impressões\", valor: parseInt(impressions || 0), bloco: \"GENERIC\" };\n  }\n\n  // Campos raiz da API (não existem no array actions)\n  if (tipo === \"__reach__\")       return { label: \"Alcance\",           valor: parseInt(reach || 0),        bloco: \"AWARENESS\" };\n  if (tipo === \"__impressions__\") return { label: \"Impressões\",        valor: parseInt(impressions || 0),  bloco: \"GENERIC\"   };\n  if (tipo === \"profile_visit\")   return { label: \"Cliques no Perfil\", valor: parseInt(inlineClicks || 0), bloco: \"FOLLOWERS\" };\n\n  // Caso padrão: busca valor no array de actions\n  const a = actions.find(a => a.action_type === tipo);\n  const valor = a ? parseInt(parseFloat(a.value)) : 0;\n  const [label, bloco] = LABEL_MAP[tipo] || [\"Resultado\", \"GENERIC\"];\n  return { label, valor, bloco };\n};\n\n// ── Formata data ISO (YYYY-MM-DD) → DD/MM/YYYY\nconst formatarData = (d) => {\n  if (!d || d === \"N/A\") return \"N/A\";\n  try { const p = d.split(\"-\"); return `${p[2]}/${p[1]}/${p[0]}`; } catch { return d; }\n};\n\n// ── Monta a mensagem WhatsApp conforme o bloco retornado por getMetrica()\n// Cada bloco = um tipo de campanha. Nunca há divergência entre 🎯 e as métricas abaixo.\nconst buildMensagem = (c, ctr, cpc, cpm, cpr, freq, m) => {\n  const di = formatarData(c.data_inicio);\n  const df = formatarData(c.data_fim);\n\n  let msg = `📣 *${c.campaign_name}*\\n`;\n  msg += `📅 ${di} → ${df}\\n`;\n  msg += `━━━━━━━━━━━━━━━━━\\n`;\n  msg += `🎯 *Resultado:* ${m.valor} ${m.label}\\n`;\n  msg += `💸 *Investimento:* R$ ${c.spend.toFixed(2)}\\n`;\n\n  if (cpr !== \"R$ 0\" && m.bloco !== \"AWARENESS\") {\n    msg += `💰 Custo por resultado: ${cpr}\\n`;\n  }\n\n  if (m.bloco === \"MESSAGES\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `💬 Conversas iniciadas: ${parseInt(c.leads)}\\n`;\n    msg += `🔗 Total conexões: ${parseInt(c.total_conexoes)}\\n`;\n\n  } else if (m.bloco === \"LEADS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `📋 Leads gerados: ${m.valor}\\n`;\n    msg += `👆 Cliques no link: ${parseInt(c.cliques_link)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n\n  } else if (m.bloco === \"SALES\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `🛒 Compras: ${m.valor}\\n`;\n    msg += `👆 Cliques no link: ${parseInt(c.cliques_link)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `🖱️ CPC: ${cpc}\\n`;\n\n  } else if (m.bloco === \"FOLLOWERS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👆 Cliques no perfil: ${m.valor}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n\n  } else if (m.bloco === \"TRAFFIC\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👆 Cliques no link: ${m.valor}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `🖱️ CPC: ${cpc}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n\n  } else if (m.bloco === \"AWARENESS\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `🔁 Frequência: ${freq}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n    msg += `💰 CPM: ${cpm}\\n`;\n\n  } else if (m.bloco === \"ENGAGEMENT\" || m.bloco === \"VIDEO\") {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `📌 Engajamento: ${parseInt(c.eng_post)}\\n`;\n    msg += `🎥 Views de vídeo: ${parseInt(c.video_views)}\\n`;\n    msg += `👍 Reações: ${parseInt(c.reacoes)}\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n\n  } else {\n    msg += `━━━━━━━━━━━━━━━━━\\n`;\n    msg += `👁️ Impressões: ${parseInt(c.impressoes)}\\n`;\n    msg += `🌍 Alcance: ${parseInt(c.alcance)}\\n`;\n    msg += `📈 CTR: ${ctr}\\n`;\n    msg += `💰 CPM: ${cpm}\\n`;\n  }\n\n  return msg;\n};\n\n// ════════════════ AGRUPAMENTO POR campaign_id ════════════════\nfor (const item of items) {\n  const dataArray = item.json?.data\n    ? (Array.isArray(item.json.data) ? item.json.data : [item.json.data])\n    : [item.json];\n\n  for (const d of dataArray) {\n    const id = d.campaign_id;\n    if (!id) continue;\n\n    if (!campanhas[id]) {\n      campanhas[id] = {\n        campaign_name:     d.campaign_name     || \"N/A\",\n        account_name:      d.account_name      || \"N/A\",\n        data_inicio:       d.date_start        || \"N/A\",\n        data_fim:          d.date_stop         || \"N/A\",\n        optimization_goal: d.optimization_goal || null,\n        impressoes: 0, alcance: 0, cliques: 0, cliques_link: 0, spend: 0,\n        video_views: 0, reacoes: 0, eng_post: 0, eng_pagina: 0,\n        leads: 0, total_conexoes: 0, profile_visit: 0, purchases: 0,\n        _acc: {},  // acumula todos os action_types dinamicamente (escalável)\n      };\n    }\n\n    const c = campanhas[id];\n    const actions = d.actions || [];\n\n    // Acumulação genérica — qualquer action_type novo da API é capturado automaticamente\n    actions.forEach(a => {\n      c._acc[a.action_type] = (c._acc[a.action_type] || 0) + parseFloat(a.value);\n    });\n\n    const ga = (t) => { const a = actions.find(a => a.action_type === t); return a ? parseFloat(a.value) : 0; };\n\n    c.impressoes     += parseInt(d.impressions        || \"0\", 10);\n    c.alcance        += parseInt(d.reach              || \"0\", 10);\n    c.cliques        += parseInt(d.clicks             || \"0\", 10);\n    c.cliques_link   += parseInt(d.inline_link_clicks || \"0\", 10);\n    c.spend          += parseFloat(d.spend            || \"0\");\n    c.video_views    += ga(\"video_view\");\n    c.reacoes        += ga(\"post_reaction\");\n    c.eng_post       += ga(\"post_engagement\");\n    c.eng_pagina     += ga(\"page_engagement\");\n    c.leads          += ga(\"onsite_conversion.messaging_conversation_started_7d\");\n    c.total_conexoes += ga(\"onsite_conversion.total_messaging_connection\");\n    c.profile_visit  += parseInt(d.inline_link_clicks || \"0\", 10); // proxy — ver nota em MAPA_GOAL\n    c.purchases      += ga(\"purchase\");\n\n    // Preserva o primeiro optimization_goal válido encontrado entre os ad sets\n    if (d.optimization_goal && !c.optimization_goal)\n      c.optimization_goal = d.optimization_goal;\n  }\n}\n\n// ════════════════ MONTAGEM DO OUTPUT ════════════════\nconst resultado = [];\n\nfor (const id of Object.keys(campanhas)) {\n  const c = campanhas[id];\n\n  // Reconstrói lista de actions a partir do acumulador genérico\n  const actList = Object.entries(c._acc)\n    .map(([k, v]) => ({ action_type: k, value: String(v) }));\n\n  // KPIs do período completo\n  const ctr  = c.impressoes > 0 ? ((c.cliques / c.impressoes) * 100).toFixed(2) + \"%\" : \"0%\";\n  const cpc  = c.cliques    > 0 ? \"R$ \" + (c.spend / c.cliques).toFixed(2)             : \"R$ 0\";\n  const freq = c.alcance    > 0 ? (c.impressoes / c.alcance).toFixed(2)                : \"0\";\n  const cpm  = c.impressoes > 0 ? \"R$ \" + ((c.spend / c.impressoes) * 1000).toFixed(2) : \"R$ 0\";\n\n  const m   = getMetrica(c.optimization_goal, c.impressoes, c.alcance, c.cliques_link, actList);\n  const cpr = m.valor > 0 ? \"R$ \" + (c.spend / m.valor).toFixed(2) : \"R$ 0\";\n\n  resultado.push({ json: {\n    mensagem:        buildMensagem(c, ctr, cpc, cpm, cpr, freq, m),\n    campaign_name:   c.campaign_name,\n    account_name:    c.account_name,\n    data_inicio:     c.data_inicio,\n    data_fim:        c.data_fim,\n    resultado_label: m.label,\n    resultado_valor: m.valor.toString(),\n    investimento:    \"R$ \" + c.spend.toFixed(2),\n    cpr,\n    impressoes:      c.impressoes.toString(),\n    alcance:         c.alcance.toString(),\n    cliques:         c.cliques.toString(),\n    cliques_link:    c.cliques_link.toString(),\n    ctr, cpc, cpm,\n    video_views:     c.video_views.toString(),\n    reacoes:         c.reacoes.toString(),\n    eng_post:        c.eng_post.toString(),\n    leads:           c.leads.toString(),\n    total_conexoes:  c.total_conexoes.toString(),\n  }});\n}\n\nreturn resultado;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        512
+      ],
+      "id": "1874c701-7fd4-44e1-abb9-bd5a1c98c790",
+      "name": "Formatar Métricas3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Timer": {
+      "main": [
+        [
+          {
+            "node": "Informações",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Informações": {
+      "main": [
+        [
+          {
+            "node": "Insights por Anúncio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Status dos Anúncios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insights por Anúncio": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status dos Anúncios": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Formatar Métricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Métricas": {
+      "main": [
+        [
+          {
+            "node": "Loop Campanhas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Loop Campanhas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Campanhas1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data1": {
+      "main": [
+        [
+          {
+            "node": "Métricas por Anúncio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "organizador de metricas1": {
+      "main": [
+        [
+          {
+            "node": "enviar metricas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timer2": {
+      "main": [
+        [
+          {
+            "node": "Informações2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Informações2": {
+      "main": [
+        [
+          {
+            "node": "Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Métricas por Anúncio": {
+      "main": [
+        [
+          {
+            "node": "organizador de metricas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Campanhas2": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Enviar Campanha WhatsApp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Campanha WhatsApp1": {
+      "main": [
+        [
+          {
+            "node": "Loop Campanhas2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Métricas por Anúncio2": {
+      "main": [
+        [
+          {
+            "node": "Formatar Métricas3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timer4": {
+      "main": [
+        [
+          {
+            "node": "Informações4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Informações4": {
+      "main": [
+        [
+          {
+            "node": "Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data": {
+      "main": [
+        [
+          {
+            "node": "Métricas por Anúncio2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Métricas3": {
+      "main": [
+        [
+          {
+            "node": "Loop Campanhas2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5b89a121-bd92-4834-bf79-650e7f79bdf8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8b4e86c4a6c8930b3e8af976a3e739d94386caae7a8907807f7270fd6174e95"
+  },
+  "nodeGroups": [],
+  "id": "jETNyUK4hgYl3nLq",
+  "tags": []
+}
