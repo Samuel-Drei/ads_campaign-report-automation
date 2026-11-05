@@ -2,9 +2,27 @@
 
 Automação em **n8n** que gera relatórios de desempenho de campanhas do **Meta Ads** (Facebook/Instagram) e envia direto para o **WhatsApp**, além de alertar sobre saldo baixo nas contas de anúncio — tudo sem intervenção manual.
 
-Criado para eliminar o trabalho repetitivo de entrar no Gerenciador de Anúncios, montar relatório e mandar mensagem pro cliente todo dia.
+Criado para eliminar o trabalho repetitivo de entrar no Gerenciador de Anúncios, montar relatório e mandar mensagem para o cliente todos os dias.
 
 ![Visão geral do workflow no n8n](docs/workflow-overview.png)
+
+---
+
+## 📈 Resultados em produção
+
+Em uso por uma rede de revenda de veículos com **3 lojas** e **~R$ 15 mil/mês** em tráfego no Meta Ads.
+
+| Antes | Depois |
+|---|---|
+| Gestor montava os relatórios numa plataforma paga de terceiros, com muito trabalho manual | Relatórios gerados e enviados no WhatsApp automaticamente |
+| ~1 dia de trabalho por semana | ~0 h manuais |
+| Assinatura de R$ 300/mês | Sem custo de licença (n8n + Evolution API) |
+
+**Impacto:**
+- ⏱️ ~8 h/semana economizadas (≈ 35 h/mês)
+- 💸 R$ 300/mês a menos em assinatura (≈ R$ 3.600/ano)
+- 🏪 3 lojas atendidas com relatórios diário, semanal e mensal
+- 📨 ~150 execuções em produção desde [março/2026]
 
 ---
 
@@ -111,7 +129,7 @@ flowchart LR
    - Nó HTTP Request apontando para sua instância da Evolution API, usando o campo `mensagem`/`text` retornado.
 3. Para o alerta de saldo, monte um segundo workflow com os três nós de [Low-budget-notify/](Low-budget-notify/), alimentados por uma lista de contas de anúncio (JSON com `id`, `nome`, `access_token`, `limite_alerta_reais`, `numero_whatsapp`, credenciais da Evolution API).
 
-> ⚠️ Nenhuma credencial real está incluída neste repositório — o `workflow.n8n.json` foi sanitizado (veja nota acima) e usa apenas *referências* de credencial do n8n (id/nome), nunca segredos em texto puro. Configure suas próprias credenciais do Meta Ads e da Evolution API diretamente no n8n.
+> ⚠️ Configure suas próprias credenciais do Meta Ads e da Evolution API diretamente no n8n.
 
 ---
 
@@ -119,14 +137,3 @@ flowchart LR
 
 Projeto em uso ativo — os relatórios diário, semanal e mensal e o alerta de saldo estão rodando em produção via n8n.
 
-## 🗺️ Ideias de evolução
-
-- Adicionar testes automatizados para `getMetrica()`/`buildMensagem()` (funções puras, fáceis de testar).
-- Dashboard simples (ex: Google Sheets ou Data Studio) alimentado pelos mesmos dados, como complemento ao WhatsApp.
-- Suporte a outros canais de envio (Telegram, e-mail) reaproveitando a mesma lógica de formatação.
-
----
-
-## 👤 Autor
-
-Desenvolvido por Samuel — automação de marketing e Ads.
