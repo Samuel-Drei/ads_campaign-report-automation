@@ -22,7 +22,7 @@ Em uso por uma rede de revenda de veículos com **3 lojas** e **~R$ 15 mil/mês*
 - ⏱️ ~8 h/semana economizadas (≈ 35 h/mês)
 - 💸 R$ 300/mês a menos em assinatura (≈ R$ 3.600/ano)
 - 🏪 3 lojas atendidas com relatórios diário, semanal e mensal
-- 📨 ~150 execuções em produção desde [março/2026]
+- 📨 ~150 execuções em produção desde março/2026
 
 ---
 
